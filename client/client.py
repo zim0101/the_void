@@ -1,43 +1,17 @@
 # -*- coding: utf-8 -*-
 
-import os
+import sys
 import socket
 import threading
-import signal
-import sys
 import curses
-import typer
-from cryptography.fernet import Fernet
-
-
-def print_cli_welcome_text():
-    print("""
-        ████████╗██╗░░██╗███████╗ ██╗░░░██╗░█████╗░██╗██████╗░
-        ╚══██╔══╝██║░░██║██╔════╝ ██║░░░██║██╔══██╗██║██╔══██╗
-        ░░░██║░░░███████║█████╗░░ ╚██╗░██╔╝██║░░██║██║██║░░██║
-        ░░░██║░░░██╔══██║██╔══╝░░ ░╚████╔╝░██║░░██║██║██║░░██║
-        ░░░██║░░░██║░░██║███████╗ ░░╚██╔╝░░╚█████╔╝██║██████╔╝
-        ░░░╚═╝░░░╚═╝░░╚═╝╚══════╝ ░░░╚═╝░░░░╚════╝░╚═╝╚═════╝░
-
-        WELCOME TO THE VOID, WHERE EVERYONE IS ANONYMOUS!!
-        """)
-
-
-def clear_console():
-    if os.name == 'nt':
-        os.system('cls')
-    else:
-        os.system('clear')
-
-
-def signal_handler(sig, frame):
-    client.close_connection()
-    sys.exit(0)
+from utils.utils import play_sound
 
 
 class ClientNode:
 
-    def __init__(self, ip, port):
+    def __init__(self, ip, port, username, fernet):
+        self.username = username
+        self.fernet = fernet
         self.node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         port_and_ip = (ip, port)
         try:
@@ -48,8 +22,8 @@ class ClientNode:
 
     def send_sms(self, sms):
         try:
-            message = f"{username}: {sms}"
-            self.node.send(fernet.encrypt(message.encode()))
+            message = f"{self.username}: {sms}"
+            self.node.send(self.fernet.encrypt(message.encode()))
         except Exception as e:
             self.messages.append(f"Error sending message: {e}")
 
@@ -59,8 +33,10 @@ class ClientNode:
                 data = self.node.recv(1024)
                 if not data:
                     break
-                self.messages.append(fernet.decrypt(data).decode())
+                decrypted_message = self.fernet.decrypt(data).decode()
+                self.messages.append(decrypted_message)
                 self.display_messages(chat_win)
+                play_sound()
             except Exception as e:
                 self.messages.append(f"Error receiving message: {e}")
                 break
@@ -91,27 +67,22 @@ class ClientNode:
         curses.curs_set(1)
         curses.start_color()
 
-        # Define a color pair (pair number 1) with white text on black background
         curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
 
-        # Set background color to black for the whole screen
         stdscr.bkgd(' ', curses.color_pair(1))
         stdscr.clear()
         stdscr.refresh()
 
-        # Set up initial screen size
         height, width = stdscr.getmaxyx()
         chat_win = curses.newwin(height - 6, width, 0, 0)
         input_win = curses.newwin(6, width, height - 6, 0)
 
-        # Apply the black background color to the chat and input windows
         chat_win.bkgd(' ', curses.color_pair(1))
         input_win.bkgd(' ', curses.color_pair(1))
 
         chat_win.scrollok(True)
         chat_win.idlok(True)
 
-        # Start the receiving thread
         always_receive = threading.Thread(target=self.receive_sms, args=(chat_win,))
         always_receive.daemon = True
         always_receive.start()
@@ -120,27 +91,23 @@ class ClientNode:
         scroll_pos = 1
 
         while True:
-            # Check if the terminal was resized
             new_height, new_width = stdscr.getmaxyx()
             if height != new_height or width != new_width:
                 height, width = new_height, new_width
                 curses.resizeterm(height, width)
 
-                # Resize windows to fit the new terminal size
                 chat_win.resize(height - 6, width)
                 input_win.resize(6, width)
                 input_win.mvwin(height - 6, 0)
 
-                # Redisplay messages after resizing
                 self.display_messages(chat_win)
 
             input_win.clear()
             input_win.box()
 
-            # Display the current visible input lines
             start_line = max(0, len(input_lines) - (height - 3) + scroll_pos)
             for idx, line in enumerate(input_lines[start_line:start_line + height - 3], start=1):
-                truncated_line = line[:width - 2]  # Truncate line if it's too long
+                truncated_line = line[:width - 2]
                 input_win.addstr(idx, 1, truncated_line)
 
             input_win.refresh()
@@ -158,16 +125,13 @@ class ClientNode:
                 if message.lower() == 'exit':
                     self.close_connection()
                     break
-                elif message.lower() == '//':
-                    chat_win.clear()
-                    chat_win.refresh()
-                    self.send_sms(message)
                 elif message.lower() == '/':
+                    self.send_sms("left the chat!")
                     self.close_connection()
                     break
                 else:
                     self.send_sms(message)
-                    self.messages.append(f"{username}: {message}")
+                    self.messages.append(f"{self.username}: {message}")
                     self.display_messages(chat_win)
                     input_lines.clear()
                     scroll_pos = 0
@@ -183,22 +147,3 @@ class ClientNode:
                     if len(input_lines) > height - 3:
                         scroll_pos += 1
                 input_lines[-1] += chr(key)
-
-
-if __name__ == "__main__":
-    print_cli_welcome_text()
-
-    username = typer.prompt("Enter your username: ", default="Anonymous")
-    ip_address = typer.prompt("Enter Server IP address: ", default="127.0.0.1")
-    server_port = typer.prompt("Enter server port: ", default=12345, type=int)
-    shared_secret = typer.prompt("Enter shared secret: ", default="7pVvuz6F8K_6swmuHOfvZ-sZhNPfTsinImRGcukIjng=")
-    fernet = Fernet(shared_secret)
-
-    clear_console()
-
-    client = ClientNode(ip_address, server_port)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    curses.wrapper(client.main)
