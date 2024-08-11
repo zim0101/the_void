@@ -7,6 +7,66 @@ import curses
 from utils.utils import play_sound
 
 
+class ChatUI:
+
+    def __init__(self, stdscr):
+        self.input_win = None
+        self.chat_win = None
+        self.stdscr = stdscr
+        self.initiate_ui()
+
+    def initiate_ui(self):
+        curses.curs_set(1)
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        self.stdscr.bkgd(' ', curses.color_pair(1))
+        self.stdscr.clear()
+        self.stdscr.refresh()
+
+        height, width = self.stdscr.getmaxyx()
+        self.chat_win = curses.newwin(height - 6, width, 0, 0)
+        self.input_win = curses.newwin(6, width, height - 6, 0)
+
+        self.chat_win.bkgd(' ', curses.color_pair(1))
+        self.input_win.bkgd(' ', curses.color_pair(1))
+
+        self.chat_win.scrollok(True)
+        self.chat_win.idlok(True)
+
+    def redraw_chat_window(self, messages):
+        self.chat_win.clear()
+        self.chat_win.box()
+        height, width = self.chat_win.getmaxyx()
+        start_index = max(0, len(messages) - (height - 2))
+
+        for idx, msg in enumerate(messages[start_index:], start=1):
+            if idx >= height - 1:
+                break
+            self.chat_win.addstr(idx, 1, msg[:width - 2])
+
+        self.chat_win.refresh()
+
+    def redraw_input_window(self, input_lines, scroll_pos):
+        self.input_win.clear()
+        self.input_win.box()
+
+        height, width = self.input_win.getmaxyx()
+        start_line = max(0, len(input_lines) - (height - 3) + scroll_pos)
+        for idx, line in enumerate(input_lines[start_line:start_line + height - 3], start=1):
+            truncated_line = line[:width - 2]
+            self.input_win.addstr(idx, 1, truncated_line)
+
+        self.input_win.refresh()
+
+    def resize_windows(self):
+        new_height, new_width = self.stdscr.getmaxyx()
+        curses.resizeterm(new_height, new_width)
+        self.chat_win.resize(new_height - 6, new_width)
+        self.input_win.resize(6, new_width)
+        self.input_win.mvwin(new_height - 6, 0)
+        self.stdscr.refresh()
+
+
 class ClientNode:
 
     def __init__(self, ip, port, username, fernet):
@@ -27,33 +87,23 @@ class ClientNode:
         except Exception as e:
             self.messages.append(f"Error sending message: {e}")
 
-    def receive_sms(self, chat_win):
+    def receive_sms(self, chat_ui):
         while True:
             try:
                 data = self.node.recv(1024)
                 if not data:
                     break
                 decrypted_message = self.fernet.decrypt(data).decode()
-                self.messages.append(decrypted_message)
-                self.display_messages(chat_win)
-                play_sound()
+                if decrypted_message == "__clear__":
+                    self.messages.clear()
+                    chat_ui.initiate_ui()
+                else:
+                    self.messages.append(decrypted_message)
+                    chat_ui.redraw_chat_window(self.messages)
+                    play_sound()
             except Exception as e:
                 self.messages.append(f"Error receiving message: {e}")
                 break
-
-    def display_messages(self, chat_win):
-        chat_win.clear()
-        chat_win.box()
-        height, width = chat_win.getmaxyx()
-
-        start_index = max(0, len(self.messages) - (height - 2))
-
-        for idx, msg in enumerate(self.messages[start_index:], start=1):
-            if idx >= height - 1:
-                break
-            chat_win.addstr(idx, 1, msg[:width - 2])
-
-        chat_win.refresh()
 
     def close_connection(self):
         try:
@@ -64,26 +114,9 @@ class ClientNode:
             self.messages.append(f"Error closing connection: {e}")
 
     def main(self, stdscr):
-        curses.curs_set(1)
-        curses.start_color()
+        chat_ui = ChatUI(stdscr)
 
-        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
-
-        stdscr.bkgd(' ', curses.color_pair(1))
-        stdscr.clear()
-        stdscr.refresh()
-
-        height, width = stdscr.getmaxyx()
-        chat_win = curses.newwin(height - 6, width, 0, 0)
-        input_win = curses.newwin(6, width, height - 6, 0)
-
-        chat_win.bkgd(' ', curses.color_pair(1))
-        input_win.bkgd(' ', curses.color_pair(1))
-
-        chat_win.scrollok(True)
-        chat_win.idlok(True)
-
-        always_receive = threading.Thread(target=self.receive_sms, args=(chat_win,))
+        always_receive = threading.Thread(target=self.receive_sms, args=(chat_ui,))
         always_receive.daemon = True
         always_receive.start()
 
@@ -92,27 +125,13 @@ class ClientNode:
 
         while True:
             new_height, new_width = stdscr.getmaxyx()
-            if height != new_height or width != new_width:
-                height, width = new_height, new_width
-                curses.resizeterm(height, width)
+            if chat_ui.chat_win.getmaxyx() != (new_height - 6, new_width):
+                chat_ui.resize_windows()
+                chat_ui.redraw_chat_window(self.messages)
 
-                chat_win.resize(height - 6, width)
-                input_win.resize(6, width)
-                input_win.mvwin(height - 6, 0)
+            chat_ui.redraw_input_window(input_lines, scroll_pos)
 
-                self.display_messages(chat_win)
-
-            input_win.clear()
-            input_win.box()
-
-            start_line = max(0, len(input_lines) - (height - 3) + scroll_pos)
-            for idx, line in enumerate(input_lines[start_line:start_line + height - 3], start=1):
-                truncated_line = line[:width - 2]
-                input_win.addstr(idx, 1, truncated_line)
-
-            input_win.refresh()
-
-            key = input_win.getch()
+            key = chat_ui.input_win.getch()
 
             if key == curses.KEY_BACKSPACE or key == 127:
                 if input_lines and input_lines[-1]:
@@ -132,18 +151,18 @@ class ClientNode:
                 else:
                     self.send_sms(message)
                     self.messages.append(f"{self.username}: {message}")
-                    self.display_messages(chat_win)
+                    chat_ui.redraw_chat_window(self.messages)
                     input_lines.clear()
                     scroll_pos = 0
             elif key == curses.KEY_DOWN:
                 if scroll_pos > 0:
                     scroll_pos -= 1
             elif key == curses.KEY_UP:
-                if len(input_lines) - scroll_pos > height - 3:
+                if len(input_lines) - scroll_pos > chat_ui.input_win.getmaxyx()[0] - 3:
                     scroll_pos += 1
             elif key != curses.ERR:
-                if not input_lines or len(input_lines[-1]) >= width - 2:
+                if not input_lines or len(input_lines[-1]) >= chat_ui.input_win.getmaxyx()[1] - 2:
                     input_lines.append("")
-                    if len(input_lines) > height - 3:
+                    if len(input_lines) > chat_ui.input_win.getmaxyx()[0] - 3:
                         scroll_pos += 1
                 input_lines[-1] += chr(key)

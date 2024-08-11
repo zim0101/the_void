@@ -16,14 +16,25 @@ class ServerNode:
         print("Waiting for connections...")
 
     def broadcast(self, message, conn=None):
-        encrypted_message = self.fernet.encrypt(message.encode())
-        with self.lock:
-            for client in self.clients:
-                if client != conn:
+        username, actual_message = message.split(": ")
+        if actual_message is not None and actual_message == "//":
+            print(f"!! -- {username} cleared the chat -- !!")
+            encrypted_message = self.fernet.encrypt(b"__clear__")
+            with self.lock:
+                for client in self.clients:
                     try:
                         client.send(encrypted_message)
                     except Exception as e:
                         print(f"Error sending message to a client: {e}")
+        else:
+            encrypted_message = self.fernet.encrypt(message.encode())
+            with self.lock:
+                for client in self.clients:
+                    if client != conn:
+                        try:
+                            client.send(encrypted_message)
+                        except Exception as e:
+                            print(f"Error sending message to a client: {e}")
 
     def handle_client(self, conn, addr):
         with self.lock:
@@ -50,14 +61,16 @@ class ServerNode:
                 client_thread = threading.Thread(target=self.handle_client, args=(conn, addr))
                 client_thread.daemon = True
                 client_thread.start()
-        except Exception as e:
-            print(f"Error: {e}")
-        finally:
+        except KeyboardInterrupt:
             self.close_connection()
+            sys.exit(0)
+        except Exception:
+            self.close_connection()
+            sys.exit(0)
 
     def send_sms(self, sms):
         try:
-            message = f"Server: {sms}"
+            message = f"FROM THE VOID: {sms}"
             self.broadcast(message)
         except Exception as e:
             print(f"Error sending message: {e}")
@@ -83,4 +96,3 @@ class ServerNode:
         except Exception as e:
             print(f"Error: {e}")
             self.close_connection()
-
