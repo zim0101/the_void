@@ -30,8 +30,8 @@ def play_sound():
             import subprocess
             for i in range(3):
                 subprocess.call(['paplay', '/usr/share/sounds/freedesktop/stereo/message.oga'])
-    except Exception as e:
-        print(f"Error playing sound: {e}")
+    except Exception:
+        return
 
 
 def clear_console():
