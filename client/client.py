@@ -70,10 +70,12 @@ class ChatUI:
 class ClientNode:
 
     def __init__(self, ip, port, username, fernet):
+        port_and_ip = (ip, port)
+
         self.username = username
         self.fernet = fernet
         self.node = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        port_and_ip = (ip, port)
+
         try:
             self.node.connect(port_and_ip)
             self.messages = []

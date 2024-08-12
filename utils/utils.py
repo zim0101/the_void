@@ -1,6 +1,7 @@
 import os
 import sys
 import base64
+from playsound import playsound
 
 
 def print_cli_welcome_text():
