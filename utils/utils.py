@@ -1,7 +1,7 @@
 import os
-import sys
+import platform
+import subprocess
 import base64
-from playsound import playsound
 
 
 def print_cli_welcome_text():
@@ -18,21 +18,35 @@ def print_cli_welcome_text():
 
 
 def play_sound():
-    try:
-        if sys.platform.startswith('win'):
+    current_dir = os.path.dirname(__file__)
+    sound_file_path = os.path.join(current_dir, '..', 'resources', 'audio', 'notification.wav')
+
+    if platform.system() == 'Windows':
+        try:
             import winsound
-            for i in range(3):
-                winsound.MessageBeep()
-        elif sys.platform.startswith('darwin'):
-            import subprocess
-            for i in range(3):
-                subprocess.call(['afplay', '/System/Library/Sounds/Glass.aiff'])
-        else:
-            import subprocess
-            for i in range(3):
-                subprocess.call(['paplay', '/usr/share/sounds/freedesktop/stereo/message.oga'])
-    except Exception:
-        return
+            winsound.PlaySound(sound_file_path, winsound.SND_FILENAME)
+        except ImportError:
+            print("Error: winsound module not found. Cannot play sound.")
+        except Exception as e:
+            print(f"Error playing sound on Windows: {e}")
+    elif platform.system() == 'Darwin':  # macOS
+        try:
+            subprocess.call(['aplay', sound_file_path], stdout=subprocess.DEVNULL)
+        except FileNotFoundError:
+            print("Error: afplay command not found. Cannot play sound.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error playing sound on macOS: {e}")
+        except Exception as e:
+            print(f"Error playing sound on macOS: {e}")
+    else:  # Linux
+        try:
+            subprocess.call(['aplay', sound_file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            print("Error: aplay command not found. Cannot play sound.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error playing sound on Linux: {e}")
+        except Exception as e:
+            print(f"Error playing sound on Linux: {e}")
 
 
 def clear_console():
