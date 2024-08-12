@@ -12,7 +12,7 @@
    ``git clone https://github.com/zim0101/the_void.git``
 2. Build the client application:
    ``docker build -t chat-client -f Dockerfile.client .``
-3. Run the client application:
-   ``docker run -it --rm --name chat-client chat-client``
+3. Run the client application (for linux):
+   ``docker run -it --rm --name chat-client --privileged -v /dev/snd:/dev/snd chat-client``
 4. After running the client application, it will ask for your anonymous name. 
 5. Then the tcp url and a secret key which you will obtain from the person who hosted the server.
