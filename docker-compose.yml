@@ -1,0 +1,10 @@
+services:
+  void:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+      - SERVER_PORT=${SERVER_PORT}
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"

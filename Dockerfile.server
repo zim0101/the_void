@@ -1,20 +1,30 @@
-# Dockerfile for the server
-
 # Use a Python base image
 FROM python:3.8-slim
 
 # Set the working directory
 WORKDIR /app
 
-# Upgrade pip
-RUN pip install --upgrade pip --timeout 120
+# Install necessary packages including supervisor
+RUN apt-get update && \
+    apt-get install -y wget unzip supervisor && \
+    wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip && \
+    unzip ngrok-stable-linux-amd64.zip && \
+    mv ngrok /usr/local/bin/ngrok && \
+    rm ngrok-stable-linux-amd64.zip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file and install dependencies
+# Upgrade pip and install dependencies
+RUN pip install --upgrade pip --timeout 120
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the server files into the container
+# Copy the server files and the supervisord config into the container
 COPY . .
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Set the entry point to run the server
-CMD ["python", "run_server.py"]
+# Expose the port (optional, adjust as necessary)
+EXPOSE ${SERVER_PORT}
+
+# Set the entry point to run supervisord
+CMD ["/usr/bin/supervisord"]
